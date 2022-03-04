@@ -82,7 +82,7 @@ namespace {
                     }
 
                     // Definitions
-                    std::map<void*, int>::iterator iter = domainToIndex.find((void*)insn);
+                    std::map<void*, int>::iterator iter = domainToIndex.find((void*)(&*insn));
                     if (iter != domainToIndex.end())
                         defSet.set((*iter).second);
                 }
@@ -152,7 +152,7 @@ namespace {
             std::stringstream ss;
 
             for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
-                BasicBlock* block = BI;
+                BasicBlock* block = &*BI;
 
                 // liveness at OUT
                 BitVector liveValues = output.result[block].out;

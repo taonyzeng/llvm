@@ -62,7 +62,7 @@ namespace llvm {
             // Exit = blocks with a return statement (could be multiple)
             for(Function::iterator I = F.begin(), E = F.end(); I != E; ++I)
                 if (isa<ReturnInst>(I->getTerminator()))
-                    boundaryBlocks.push_back(I);
+                    boundaryBlocks.push_back(&*I);
             break;
 
         default:
@@ -94,9 +94,10 @@ namespace llvm {
         *intVal = initCond;
         intRes.transferOutput.element = initCond;
         for (Function::iterator BB = F.begin(), BE = F.end(); BB != BE; ++BB) {
-            if (std::find(boundaryBlocks.begin(),boundaryBlocks.end(),(BasicBlock*)BB) == boundaryBlocks.end()) {
+            BasicBlock* block = &*BB;
+            if (std::find(boundaryBlocks.begin(),boundaryBlocks.end(), block) == boundaryBlocks.end()) {
                 // If it is not one of the boundary blocks
-                result[(BasicBlock*)BB] = intRes;
+                result[block] = intRes;
             }
         }
 
@@ -108,16 +109,17 @@ namespace llvm {
 
         for (Function::iterator BB = F.begin(), BE = F.end(); BB != BE; ++BB) {
             BasicBlockList neighborList;
-
+            BasicBlock* block = &*BB;
+            
             switch (direction) {
             case Direction::FORWARD:
-                for (pred_iterator neighbor = pred_begin(BB), E = pred_end(BB); neighbor != E; ++neighbor)
+                for (pred_iterator neighbor = pred_begin(block), E = pred_end(block); neighbor != E; ++neighbor)
                     neighborList.push_back(*neighbor);
 
                 break;
 
             case Direction::BACKWARD:
-                for (succ_iterator neighbor = succ_begin(BB), E = succ_end(BB); neighbor != E; ++neighbor)
+                for (succ_iterator neighbor = succ_begin(block), E = succ_end(block); neighbor != E; ++neighbor)
                     neighborList.push_back(*neighbor);
                 break;
 
@@ -126,7 +128,7 @@ namespace llvm {
                 break;
             }
 
-            blockNeighbors[BB] = neighborList;
+            blockNeighbors[block] = neighborList;
 
             /*
               DBG(outs() << "NeighborList for block : " << BB->getName() << "\n");

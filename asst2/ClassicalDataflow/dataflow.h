@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
+#include <unordered_map>
 #include <map>
 #include <sstream>
 #include <string>
@@ -87,12 +88,19 @@ namespace llvm {
 
     /* Basic Class for Data flow analysis. Specific analyses must extend this */
     class DataFlow {
+
     public:
 
     DataFlow(Direction direction, MeetOp meetup_op)
         : direction(direction), meetup_op(meetup_op)
         {
         }
+
+        //store the generate set for each basic block.
+        std::unordered_map<BasicBlock*, BitVector> genSet;
+
+        //store the kill set for each basic block.
+        std::unordered_map<BasicBlock*, BitVector> killSet;
 
         /* Applying Meet Operator */
         BitVector applyMeetOp(BitVectorList inputs);
@@ -108,6 +116,8 @@ namespace llvm {
                                           std::vector<void*> domain,
                                           std::map<void*, int> domainToIndex,
                                           BasicBlock* block) = 0;
+
+
 
     private:
 

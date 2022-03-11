@@ -403,7 +403,8 @@ namespace llvm {
 
     std::string printValue(Value* v)
     {
-        std::string res; llvm::raw_string_ostream raw_st(res);
+        std::string res; 
+        llvm::raw_string_ostream raw_st(res);
         v->print(raw_st);
         return res;
     }

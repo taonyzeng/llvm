@@ -87,6 +87,15 @@ namespace {
                         defSet.set((*iter).second);
                 }
 
+                //update the genSet and killSet for each block.
+                if(genSet.find(block) == genSet.end()){
+                    genSet[block] = useSet;
+                }
+
+                if(killSet.find(block) == killSet.end()){
+                    killSet[block] = defSet;
+                }
+
                 // Transfer function = useSet U (input - defSet)
 
                 transferOutput.element = defSet;
@@ -106,8 +115,8 @@ namespace {
 
         virtual bool runOnFunction(Function &F) {
             // Print Information
-            std::string function_name = F.getName();
-            DBG(outs() << "FUNCTION :: " << function_name  << "\n");
+            // std::string function_name = F.getName();
+            DBG(outs() << "FUNCTION :: " << F.getName()  << "\n");
             DataFlowResult output;
 
             // Setup the pass
@@ -130,86 +139,21 @@ namespace {
                 }
             }
 
-            DBG(outs() << "------------------------------------------\n\n");
-            DBG(outs() << "DOMAIN :: " << domain.size() << "\n");
-            for(void* element : domain)
-            {
-                DBG(outs() << "Element : " << *((Value*) element) << "\n"); // Could also use getShortValueName((Value*) element)
-            }
-            DBG(outs() << "------------------------------------------\n\n");
-
             // For LVA, both are empty sets
             BitVector boundaryCond(domain.size(), false);
             BitVector initCond(domain.size(), false);
 
             // Apply pass
             output = pass.run(F, domain, boundaryCond, initCond);
-            //printResult(output);
 
-            // PRINTING RESULTS
+            for(BasicBlock& BL : F){
+                BasicBlock* block = &BL;
 
-            // We use the results to compute the final liveness (we handle phi nodes here)
-            std::stringstream ss;
-
-            for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
-                BasicBlock* block = &*BI;
-
-                // liveness at OUT
-                BitVector liveValues = output.result[block].out;
-
-                // Generate Print Information in Reverse Order
-                std::vector<std::string> revOut;
-
-                revOut.push_back("//===--------------------------------------------------------------------------------------------------------------------------===//");
-
-                // Print live variables at the end of the block
-                ss.clear();
-                ss.str(std::string());
-                ss << std::setw(WIDTH) << std::right;
-                ss << printSet(domain, liveValues, 0);
-                revOut.push_back(ss.str());
-
-                // Iterate backward through the block, update liveness
-                for (BasicBlock::reverse_iterator insn = block->rbegin(), IE = block->rend(); insn != IE; ++insn) {
-
-                    // Add the instruction itself
-                    revOut.push_back(std::string(WIDTH, ' ') + printValue(&*insn));
-
-                    // Phi inst: Kill LHS, but don't output liveness here
-                    if (PHINode* phiInst = dyn_cast<PHINode>(&*insn)) {
-                        std::map<void*, int>::const_iterator it = output.domainToIndex.find((void*)phiInst);
-                        if (it != output.domainToIndex.end())
-                            liveValues.reset(it->second);
-                    }
-                    else {
-                        // Make values live when used as operands
-                        for (Instruction::op_iterator opnd = insn->op_begin(), opE = insn->op_end(); opnd != opE; ++opnd) {
-                            Value* val = *opnd;
-                            if (isa<Instruction>(val) || isa<Argument>(val)) {
-                                int ind = output.domainToIndex[(void*)val];
-                                liveValues.set(ind);
-                            }
-                        }
-
-                        // When a value is defined, remove it from live set before that instruction
-                        std::map<void*, int>::iterator it = output.domainToIndex.find((void*)(&*insn));
-                        if (it != output.domainToIndex.end())
-                            liveValues.reset(it->second);
-
-                        // Print live variables
-                        ss.clear();
-                        ss.str(std::string());
-                        ss << std::setw(WIDTH) << std::right;
-                        ss << printSet(domain, liveValues, 0);
-                        revOut.push_back(ss.str());
-                    }
-                }
-
-                revOut.push_back("//===--------------------------------------------------------------------------------------------------------------------------===//");
-
-                // Since we added strings in the reverse order, print them in reverse
-                for (std::vector<std::string>::reverse_iterator it = revOut.rbegin(); it != revOut.rend(); ++it)
-                        outs() << *it << "\n";
+                outs() << "BB Name: "<< block->getName() << "\n";
+                outs() << "IN: " << printSet(domain, output.result[block].in, 0) << "\n";
+                outs() << "OUT: "<< printSet(domain, output.result[block].out, 0) << "\n";
+                outs() << "Use: "<< printSet(domain, pass.genSet[block], 0) << "\n";
+                outs() << "Def: "<< printSet(domain, pass.killSet[block], 0) << "\n\n";
             }
 
             // No modification

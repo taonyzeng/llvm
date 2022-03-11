@@ -41,8 +41,10 @@ namespace {
                 BitVector GenSet(domainSize);
                 BitVector KillSet(domainSize);
 
-                for (BasicBlock::iterator i = block->begin(), e = block->end(); i!=e; ++i) {
-                    Instruction * I = i;
+                for(Instruction& II : *block){
+                //Instruction* I  = &II;
+                //for (BasicBlock::iterator i = block->begin(), e = block->end(); i!=e; ++i) {
+                    Instruction * I = &II;
                     // We only care about available expressions for BinaryOperators
                     if (BinaryOperator * BI = dyn_cast<BinaryOperator>(I)) {
                         // Create a new Expression to capture the RHS of the BinaryOperator
@@ -105,6 +107,16 @@ namespace {
 
                 }
 
+
+                //update the genSet and killSet for each block.
+                if(genSet.find(block) == genSet.end()){
+                    genSet[block] = GenSet;
+                }
+
+                if(killSet.find(block) == killSet.end()){
+                    killSet[block] = KillSet;
+                }
+
                 //printBitVector(GenSet);
                 //printBitVector(KillSet);
                 // Transfer function = GenSet U (input - KillSet)
@@ -126,22 +138,19 @@ namespace {
 
         virtual bool runOnFunction(Function &F) {
             // Print Information
-            std::string function_name = F.getName();
-            DBG(outs() << "FUNCTION :: " << function_name  << "\n");
+            // auto function_name = F.getName();
+            DBG(outs() << "FUNCTION :: " << F.getName()  << "\n");
             DataFlowResult output;
 
             // Setup the pass
             std::vector<void*> domain;
-
             // Compute the domain
 
-            for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
-                BasicBlock* block = FI;
-                for (BasicBlock::iterator i = block->begin(), e = block->end(); i!=e; ++i) {
-                    Instruction * I = i;
+            for(BasicBlock& B : F){
+                for(Instruction& I : B){
 
                     // We only care about available expressions for BinaryOperators
-                    if (BinaryOperator * BI = dyn_cast<BinaryOperator>(I)) {
+                    if (BinaryOperator * BI = dyn_cast<BinaryOperator>(&I)) {
 
                         // Create a new Expression to capture the RHS of the BinaryOperator
                         Expression *expr = new Expression(BI);
@@ -166,10 +175,10 @@ namespace {
 
             DBG(outs() << "------------------------------------------\n\n");
             DBG(outs() << "DOMAIN :: " << domain.size() << "\n");
-            for(void* element : domain)
-            {
+            for(void* element : domain){
                 DBG(outs() << "Element : " << ((Expression*) element)->toString() << "\n");
             }
+
             DBG(outs() << "------------------------------------------\n\n");
 
             // For AEA, the boundary condition is phi and init condition is U.
@@ -190,115 +199,14 @@ namespace {
             // We use the results to compute the available expressions
             std::stringstream ss;
 
-            for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
-                BasicBlock* block = BI;
+            for(BasicBlock& BL : F){
+                BasicBlock* block = &BL;
 
-                // AE at IN
-                BitVector availableExprs = output.result[block].in;
-
-                // Generate Print Information
-                std::vector<std::string> out;
-
-                out.push_back("//===--------------------------------------------------------------------------------------------------------------------------===//");
-
-                // Print live variables at the entry of the block
-                ss.clear();
-                ss << std::setw(WIDTH) << std::right;
-                ss.str(std::string());
-                ss << printSet(domain, availableExprs, 1) << " :: BB Entry" ;
-                out.push_back(ss.str());
-
-                // Iterate forward through the block, updating availability of expressions
-                for (BasicBlock::iterator insn = block->begin(), IE = block->end(); insn != IE; ++insn) {
-
-                    // Add the instruction itself
-                    out.push_back(std::string(WIDTH, ' ') + printValue(&*insn));
-
-                    // Gen expressions
-                    Instruction * I = insn;
-
-                    // We only care about available expressions for BinaryOperators
-                    if (BinaryOperator * BI = dyn_cast<BinaryOperator>(I)) {
-                        // Create a new Expression to capture the RHS of the BinaryOperator
-                        Expression *expr = new Expression(BI);
-                        Expression *match = NULL;
-                        bool found = false;
-
-                        for(void* element : domain)
-                        {
-                            if((*expr) == *((Expression *) element))
-                            {
-                                found = true;
-                                match = (Expression *) element;
-                                break;
-                            }
-                        }
-
-                        // Generated expression
-                        if(found)
-                        {
-                            int valInd = domainToIndex[(void*)match];
-
-                            // The instruction definitely evaluates the expression in RHS here
-                            // The expression  will be killed if one of its operands is
-                            // redefined subsequently in the BB.
-                            availableExprs.set(valInd);
-                        }
-                    }
-
-                    // Killed expressions
-
-                    // The assignment kills all expressions in which the LHS is an operand.
-                    // They will be generated if subsequently recomputed in BB.
-                    StringRef insn_str  =  I->getName();
-
-                    if(!insn_str.empty())
-                    {
-                        //DBG(outs() << "Insn : " << insn_str  << "\n");
-
-                        for(auto domain_itr = domain.begin() ; domain_itr != domain.end() ; domain_itr++)
-                        {
-                            Expression* expr = (Expression*) (*domain_itr);
-
-                            StringRef op1 = expr->v1->getName();
-                            StringRef op2 = expr->v2->getName();
-
-                            if(op1.equals(insn_str) || op2.equals(insn_str))
-                            {
-                                //DBG(outs() << "Expr : " << expr->toString()  << " ");
-
-                                // Kill if either operand 1 or 2 match the variable assigned
-                                std::map<void*, int>::iterator iter = domainToIndex.find((void*) expr);
-
-                                if (iter != domainToIndex.end())
-                                {
-                                    //DBG(outs() << "Index : " << (*iter).second  << "\n");
-                                    availableExprs.reset((*iter).second);
-                                }
-                            }
-                        }
-                    }
-
-                    //printBitVector(availableExprs);
-
-                    // Print live variables at this program point
-                    PHINode* phiInst = dyn_cast<PHINode>(&*insn);
-                    // Skip printing for phi instructions
-                    if(phiInst == NULL)
-                    {
-                        ss.clear();
-                        ss.str(std::string());
-                        ss << std::setw(WIDTH) << std::right;
-                        ss << printSet(domain, availableExprs, 1);
-                        out.push_back(ss.str());
-                    }
-                }
-
-                out.push_back("//===--------------------------------------------------------------------------------------------------------------------------===//");
-
-                // Print strings
-                for (std::vector<std::string>::iterator it = out.begin(); it != out.end(); ++it)
-                    outs() << *it << "\n";
+                outs() << "BB Name: "<< block->getName() << "\n";
+                outs() << "IN: " << printSet(domain, output.result[block].in, 1) << "\n";
+                outs() << "OUT: "<< printSet(domain, output.result[block].out, 1) << "\n";
+                outs() << "Gen: "<< printSet(domain, pass.genSet[block], 1) << "\n";
+                outs() << "Kill: "<< printSet(domain, pass.killSet[block], 1) << "\n\n";
 
             }
 
